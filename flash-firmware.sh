@@ -30,15 +30,24 @@ done
 
 PIT="$(ls "$WORK"/*.pit 2>/dev/null | head -1)"
 [ -z "$PIT" ] && { echo "ERROR: no .pit found in firmware (it's usually inside CSC)"; exit 1; }
-echo ">>> 2) Mapping partitions from $(basename "$PIT") ..."
+echo ">>> 2) Mapping flash filenames to partition identifiers from firmware PIT ..."
 
 ARGS=()
-while read -r part fn; do
+while read -r part_id fn; do
+  part_id="${part_id//$'\r'/}"
+  fn="${fn//$'\r'/}"
   [ -z "$fn" ] && continue
-  if [ -e "$WORK/$fn" ]; then ARGS+=(--"$part" "$WORK/$fn"); echo "   $part <- $fn"; fi
+  img="$WORK/$fn"
+  if [ ! -e "$img" ]; then
+    img="$(find "$WORK" -maxdepth 1 -type f -iname "$fn" -print -quit 2>/dev/null)"
+  fi
+  if [ -n "$img" ]; then
+    ARGS+=(--"$part_id" "$img")
+    echo "   $part_id <- $(basename "$img")"
+  fi
 done < <("$HEIMDALL" print-pit --file "$PIT" 2>/dev/null | awk '
-  /Partition Name:/{name=$3}
-  /Flash Filename:/{fn=$3; if(fn!="" && fn!="-") print name, fn}')
+  /Identifier:/{id=$2}
+  /Flash Filename:/{fn=$3; if(id!="" && fn!="" && fn!="-") print id, fn}')
 
 [ ${#ARGS[@]} -eq 0 ] && { echo "ERROR: nothing to flash (no image matched the PIT)"; exit 1; }
 
